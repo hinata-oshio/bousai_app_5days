@@ -18,6 +18,25 @@
     <label for="name">避難所名（必須）</label><br>
     <input type="text" id="name" name="name">
   </p>
+  <p>
+    <label for="status">開設状況</label><br>
+    <select id="status" name="status">
+      <option value="closed" selected>未開設</option>
+      <option value="open">開設中</option>
+    </select>
+  </p>
+  <fieldset>
+    <legend>地図上の位置（任意）</legend>
+    <p>緯度・経度を両方入力すると、ホーム画面の避難所マップに表示されます。</p>
+    <p>
+      <label for="latitude">緯度</label><br>
+      <input type="number" id="latitude" name="latitude" min="-90" max="90" step="any">
+    </p>
+    <p>
+      <label for="longitude">経度</label><br>
+      <input type="number" id="longitude" name="longitude" min="-180" max="180" step="any">
+    </p>
+  </fieldset>
   <p><button type="submit">登録</button></p>
 </form>
 {% endblock %}

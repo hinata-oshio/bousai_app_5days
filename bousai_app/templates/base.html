@@ -4,30 +4,116 @@
   <meta charset="utf-8">
   <title>{% block title %}防災アプリ{% endblock %}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif;
+      color: #27364a;
+      background: #f7f9fc;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #f7f9fc;
+    }
+
+    .site-header {
+      position: relative;
+      z-index: 1000;
+      background: #2b59a5;
+      box-shadow: 0 2px 8px rgb(23 49 91 / 14%);
+    }
+
+    .header-inner {
+      width: min(100% - 48px, 1390px);
+      min-height: 70px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+    }
+
+    .header-inner h1 {
+      margin: 0;
+      color: #fff;
+      font-size: 25px;
+      font-weight: 700;
+    }
+
+    .site-nav {
+      border-bottom: 1px solid #e3e9f2;
+      background: #fff;
+      box-shadow: 0 2px 8px rgb(23 49 91 / 6%);
+    }
+
+    .site-nav-inner {
+      width: min(100% - 48px, 1390px);
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .site-nav a {
+      min-height: 48px;
+      padding: 0 16px;
+      display: inline-flex;
+      align-items: center;
+      border-bottom: 3px solid transparent;
+      color: #294c7e;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .site-nav a:hover,
+    .site-nav a:focus-visible { background: #eef4fc; }
+    .site-nav a[aria-current="page"] {
+      border-bottom-color: #2b59a5;
+      color: #1d4688;
+      background: #f1f6fd;
+    }
+    .current-page {
+      width: min(100% - 48px, 1390px);
+      margin: 0 auto;
+      padding: 13px 0 0;
+      color: #52677f;
+      font-size: 14px;
+    }
+    .current-page strong { color: #27364a; }
+
+    main { padding: 32px 24px 48px; }
+
+    @media (max-width: 600px) {
+      .header-inner { width: calc(100% - 32px); min-height: 58px; }
+      .header-inner h1 { font-size: 22px; }
+      .site-nav-inner, .current-page { width: calc(100% - 32px); }
+      .site-nav-inner { gap: 0; }
+      .site-nav a { min-height: 44px; padding: 0 10px; font-size: 14px; }
+      main { padding: 20px 14px 36px; }
+    }
+  </style>
 </head>
 <body>
-  <!-- ヘッダー -->
-  <h1>防災アプリ</h1>
+  <header class="site-header">
+    <div class="header-inner">
+      <h1>防災アプリ</h1>
+    </div>
+    <nav class="site-nav" aria-label="メインメニュー">
+      <div class="site-nav-inner">
+        <a href="/" {% if active_nav_item == 'home' %}aria-current="page"{% endif %}>ホーム</a>
+        <a href="/shelter_search" {% if active_nav_item == 'shelter_search' %}aria-current="page"{% endif %}>避難所検索</a>
+        <a href="/shelter_register" {% if active_nav_item == 'shelter_register' %}aria-current="page"{% endif %}>避難所登録</a>
+        <a href="/board" {% if active_nav_item == 'board' %}aria-current="page"{% endif %}>指示ボード</a>
+        <a href="/login" {% if active_nav_item == 'login' %}aria-current="page"{% endif %}>ログイン</a>
+      </div>
+    </nav>
+  </header>
 
-  <!-- ナビゲーション -->
-  <nav>
-    <a href="/">ホーム</a> |
-    <a href="/shelter_search">避難所検索</a> |
-    <a href="/shelter_register">避難所登録</a> |
-    <a href="/board">指示・発信ボード</a>
-    ｜
-    {% if session.logged_in %}
-      ログイン中{% if session.username %}（{{ session.username }}）{% endif %}
-      <a href="/logout">ログアウト</a>
-    {% else %}
-      未ログイン
-      <a href="/login">ログイン</a>
-    {% endif %}
-  </nav>
-  <hr>
+  <p class="current-page" aria-live="polite">現在の画面: <strong>{{ current_page[0] }}</strong></p>
 
   <main>
-    <!-- ここに子テンプレートの content が入る -->
     {% block content %}{% endblock %}
   </main>
 </body>
