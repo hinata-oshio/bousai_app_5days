@@ -3,23 +3,133 @@
 {% block title %}指示・発信ボード - 防災アプリ{% endblock %}
 
 {% block content %}
-<h2>発信ボード</h2>
-<p>住民向けの発信を登録・確認できます。</p>
+<style>
+  .board-page { width: min(100%, 1000px); margin: 0 auto; }
+  .board-form, .board-list-panel {
+    margin-top: 22px;
+    padding: 24px;
+    border: 1px solid #e3e9f2;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 6px 18px rgb(38 67 108 / 5%);
+  }
+  .board-form h3, .board-list-panel h3 { margin: 0 0 16px; color: #2b59a5; }
+  .board-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .board-field { display: flex; flex-direction: column; gap: 6px; }
+  .board-field.full-width { grid-column: 1 / -1; }
+  .board-field input, .board-field select, .board-field textarea {
+    width: 100%;
+    min-height: 42px;
+    padding: 8px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 5px;
+    color: #27364a;
+    background: #fff;
+    font: inherit;
+  }
+  .board-field textarea { min-height: 100px; resize: vertical; }
+  .board-submit {
+    margin-top: 16px;
+    min-height: 42px;
+    padding: 8px 18px;
+    border: 0;
+    border-radius: 5px;
+    color: #fff;
+    background: #2b59a5;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .board-message { margin: 12px 0; padding: 12px; border-radius: 5px; }
+  .board-message.success { color: #17633a; background: #eaf6ef; }
+  .board-message.error { color: #a61b1b; background: #fff0ee; }
+  .board-table-wrap { overflow-x: auto; }
+  .board-table { width: 100%; border-collapse: collapse; text-align: left; }
+  .board-table th, .board-table td { padding: 12px 10px; border-bottom: 1px solid #e8edf3; vertical-align: top; }
+  .board-table th { color: #52677f; font-size: 14px; }
+  .priority-badge { display: inline-block; padding: 3px 8px; border-radius: 12px; color: #52677f; background: #eef1f5; font-size: 12px; font-weight: 700; white-space: nowrap; }
+  .priority-badge.is-high { color: #fff; background: #c62828; }
+  .board-target-public { color: #17633a; font-weight: 700; }
+  @media (max-width: 600px) {
+    .board-form, .board-list-panel { padding: 18px 14px; }
+    .board-form-grid { grid-template-columns: 1fr; }
+    .board-field.full-width { grid-column: auto; }
+  }
+</style>
 
-<!-- 発信一覧 -->
-<h3>発信一覧</h3>
+<div class="board-page">
+  <h2>指示ボード</h2>
+  <p>住民・観光客向けの指示を発信すると、ホーム画面にも表示されます。</p>
+
+  {% if success_message %}
+  <p class="board-message success" role="status">{{ success_message }}</p>
+  {% endif %}
+  {% if error_message %}
+  <p class="board-message error" role="alert">{{ error_message }}</p>
+  {% endif %}
+
+  <section class="board-form" aria-labelledby="board-form-title">
+    <h3 id="board-form-title">新しい指示を発信</h3>
+    <form method="post">
+      <div class="board-form-grid">
+        <label class="board-field" for="target">
+          <span>宛先</span>
+          <select id="target" name="target" required>
+            <option value="住民・観光客">住民・観光客</option>
+            <option value="防災課">防災課</option>
+            <option value="道路管理課">道路管理課</option>
+          </select>
+        </label>
+        <label class="board-field" for="priority">
+          <span>緊急度</span>
+          <select id="priority" name="priority" required>
+            <option value="normal">通常</option>
+            <option value="high">高（緊急）</option>
+          </select>
+        </label>
+        <label class="board-field full-width" for="content">
+          <span>指示内容</span>
+          <textarea id="content" name="content" maxlength="1000" required></textarea>
+        </label>
+        <label class="board-field full-width" for="shelter">
+          <span>避難先（任意）</span>
+          <input id="shelter" name="shelter" type="text" maxlength="200">
+        </label>
+      </div>
+      <button class="board-submit" type="submit">指示を発信</button>
+    </form>
+  </section>
+
+  <section class="board-list-panel" aria-labelledby="board-list-title">
+    <h3 id="board-list-title">発信履歴</h3>
 {% if instructions %}
-<table border="1" cellpadding="5">
-  <tr>
-    <th>内容</th>
-  </tr>
-  {% for inst in instructions %}
-  <tr>
-    <td>{{ inst.content }}{% if inst.shelter %}（避難先: {{ inst.shelter }}）{% endif %}</td>
-  </tr>
-  {% endfor %}
-</table>
+    <div class="board-table-wrap">
+      <table class="board-table">
+        <thead>
+          <tr><th>発信日時</th><th>宛先</th><th>緊急度</th><th>内容</th><th>状態</th></tr>
+        </thead>
+        <tbody>
+          {% for inst in instructions %}
+          <tr>
+            <td>{{ inst.created_at or '日時不明' }}</td>
+            <td class="{% if inst.target in ('住民', '住民・観光客') %}board-target-public{% endif %}">{{ inst.target }}</td>
+            <td>
+              {% if inst.priority == 'high' %}
+              <span class="priority-badge is-high">高（緊急）</span>
+              {% else %}
+              <span class="priority-badge">通常</span>
+              {% endif %}
+            </td>
+            <td>{{ inst.content }}{% if inst.shelter %}<br>避難先: {{ inst.shelter }}{% endif %}</td>
+            <td>{{ inst.status or '発信中' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
 {% else %}
-<p>登録されている指示はありません。</p>
+    <p>登録されている指示はありません。</p>
 {% endif %}
+  </section>
+</div>
 {% endblock %}

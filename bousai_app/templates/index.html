@@ -3,7 +3,7 @@
 {% block content %}
 <div class="home-dashboard">
     <section class="emergency-panel" aria-labelledby="emergency-title">
-        <h2 class="emergency-title" id="emergency-title"><span aria-hidden="true">!</span>緊急のお知らせ</h2>
+        <h2 class="emergency-title" id="emergency-title"><span aria-hidden="true">!</span>新着指示・緊急のお知らせ</h2>
         <ul class="emergency-list" id="emergencyList" aria-live="assertive"></ul>
     </section>
 
@@ -115,8 +115,26 @@
         border-top: 1px solid #f1cfca;
     }
     .emergency-item:first-child { border-top: 0; }
+    .emergency-item.is-high-priority {
+        margin: 4px -10px;
+        padding: 12px 10px;
+        border: 1px solid #c62828;
+        border-radius: 6px;
+        background: #ffe5e2;
+    }
     .emergency-item-type { margin: 0 0 3px; color: #9d2b22; font-size: 13px; font-weight: 700; }
     .emergency-item-content { margin: 0; color: #3e2524; font-size: 16px; font-weight: 700; line-height: 1.6; overflow-wrap: anywhere; }
+    .emergency-item.is-high-priority .emergency-item-content { color: #a61b1b; }
+    .emergency-item-meta { margin: 4px 0 0; color: #65758a; font-size: 12px; }
+    .emergency-priority-badge {
+        margin-left: 6px;
+        padding: 2px 7px;
+        border-radius: 10px;
+        color: #fff;
+        background: #c62828;
+        font-size: 11px;
+        vertical-align: 1px;
+    }
     .emergency-detail-link { color: #8e1f1a; font-size: 14px; font-weight: 700; white-space: nowrap; }
     .emergency-empty { margin: 10px 0 0; color: #624b49; line-height: 1.6; }
 
@@ -365,7 +383,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const initialDisasterInformation = {{ disaster_information|tojson }};
-    const residentEmergencyNotices = {{ emergency_notices|tojson }};
+    let residentEmergencyNotices = {{ emergency_notices|tojson }};
     const mapShelters = {{ map_shelters|tojson }};
     const emergencyList = document.getElementById('emergencyList');
     const disasterList = document.getElementById('disasterList');
@@ -376,6 +394,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const informationRefreshStatus = document.getElementById('informationRefreshStatus');
     let weatherInformation = [];
     let refreshInProgress = false;
+    let instructionRefreshInProgress = false;
+    let latestWeatherWarnings = [];
+    let weatherFetchFailed = false;
 
     const map = L.map('shelterMap').setView([40.8222, 140.7474], 12);
     const mapStatus = document.getElementById('mapStatus');
@@ -477,12 +498,16 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(data => {
                 updateWeatherContent(data);
                 updateDisasterWeather(data);
-                renderEmergencyNotices(data);
                 if (data.error) {
+                    weatherFetchFailed = true;
+                    renderEmergencyNotices();
                     informationRefreshStatus.textContent = '更新に失敗しました。前回の情報を表示しています。';
                     informationRefreshStatus.classList.add('is-error');
                     return;
                 }
+                latestWeatherWarnings = data.warnings || [];
+                weatherFetchFailed = false;
+                renderEmergencyNotices();
                 informationUpdatedAt.textContent = data.last_fetch_time || '取得できません';
                 informationRefreshStatus.textContent = '最新の気象情報に更新しました。';
             })
@@ -490,7 +515,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.error('気象情報の更新に失敗しました:', error);
                 updateWeatherContent({ error: true });
                 updateDisasterWeather({ error: true });
-                renderEmergencyNotices({ error: true });
+                weatherFetchFailed = true;
+                renderEmergencyNotices();
                 informationRefreshStatus.textContent = '更新に失敗しました。前回の情報を表示しています。';
                 informationRefreshStatus.classList.add('is-error');
             })
@@ -559,30 +585,15 @@ document.addEventListener('DOMContentLoaded', function() {
         renderDisasterInformation();
     }
 
-    function renderEmergencyNotices(data) {
-        if (data.error) {
-            const previousNotices = Array.from(emergencyList.querySelectorAll('.emergency-item'));
-            emergencyList.replaceChildren();
-            if (previousNotices.length > 0) {
-                const staleMessage = document.createElement('li');
-                staleMessage.className = 'emergency-empty';
-                staleMessage.textContent = '気象情報を更新できませんでした。表示中のお知らせは前回取得時の情報です。';
-                emergencyList.appendChild(staleMessage);
-                previousNotices.forEach(notice => emergencyList.appendChild(notice));
-            } else {
-                const errorMessage = document.createElement('li');
-                errorMessage.className = 'emergency-empty';
-                errorMessage.textContent = '気象情報を取得できませんでした。災害情報の詳細を確認してください。';
-                emergencyList.appendChild(errorMessage);
-            }
-            return;
-        }
-
+    function renderEmergencyNotices() {
         const notices = residentEmergencyNotices.map(notice => ({
             type: '住民向け発信',
-            content: notice.content
+            content: notice.content,
+            priority: notice.priority,
+            received_at: notice.received_at,
+            shelter: notice.shelter
         }));
-        (data.warnings || [])
+        latestWeatherWarnings
             .filter(warning => warning.status === '発表' || warning.status === '継続')
             .forEach(warning => notices.push({
                 type: '気象情報',
@@ -590,7 +601,18 @@ document.addEventListener('DOMContentLoaded', function() {
             }));
 
         emergencyList.replaceChildren();
+        if (weatherFetchFailed) {
+            const staleMessage = document.createElement('li');
+            staleMessage.className = 'emergency-empty';
+            staleMessage.textContent = notices.length
+                ? '気象情報を更新できませんでした。表示中の気象情報は前回取得時の内容です。'
+                : '気象情報を取得できませんでした。';
+            emergencyList.appendChild(staleMessage);
+        }
         if (notices.length === 0) {
+            if (weatherFetchFailed) {
+                return;
+            }
             const emptyMessage = document.createElement('li');
             emptyMessage.className = 'emergency-empty';
             emptyMessage.textContent = '現在、緊急のお知らせはありません。';
@@ -601,14 +623,38 @@ document.addEventListener('DOMContentLoaded', function() {
         notices.forEach(notice => {
             const item = document.createElement('li');
             item.className = 'emergency-item';
+            if (notice.type === '住民向け発信' && notice.priority === 'high') {
+                item.classList.add('is-high-priority');
+            }
             const text = document.createElement('div');
             const type = document.createElement('p');
             type.className = 'emergency-item-type';
             type.textContent = notice.type;
+            if (notice.type === '住民向け発信' && notice.priority === 'high') {
+                const priorityBadge = document.createElement('span');
+                priorityBadge.className = 'emergency-priority-badge';
+                priorityBadge.textContent = '緊急度 高';
+                type.appendChild(priorityBadge);
+            }
             const content = document.createElement('p');
             content.className = 'emergency-item-content';
             content.textContent = notice.content;
             text.append(type, content);
+            if (notice.type === '住民向け発信') {
+                const metadata = [];
+                if (notice.shelter) {
+                    metadata.push(`避難先: ${notice.shelter}`);
+                }
+                if (notice.received_at) {
+                    metadata.push(`発信: ${notice.received_at}`);
+                }
+                if (metadata.length > 0) {
+                    const details = document.createElement('p');
+                    details.className = 'emergency-item-meta';
+                    details.textContent = metadata.join(' / ');
+                    text.appendChild(details);
+                }
+            }
 
             const link = document.createElement('a');
             link.className = 'emergency-detail-link';
@@ -617,6 +663,40 @@ document.addEventListener('DOMContentLoaded', function() {
             item.append(text, link);
             emergencyList.appendChild(item);
         });
+    }
+
+    function updateResidentInstructions() {
+        if (instructionRefreshInProgress) {
+            return;
+        }
+        instructionRefreshInProgress = true;
+        fetch('/api/resident_instructions')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`住民向け指示APIがHTTP ${response.status}を返しました`);
+                }
+                return response.json();
+            })
+            .then(notices => {
+                if (!Array.isArray(notices)) {
+                    throw new Error('住民向け指示APIの応答形式が不正です');
+                }
+                residentEmergencyNotices = notices;
+                renderEmergencyNotices();
+            })
+            .catch(error => {
+                console.error('住民向け指示の更新に失敗しました:', error);
+                informationRefreshStatus.textContent = '住民向け指示を更新できませんでした。表示中の内容を保持しています。';
+                informationRefreshStatus.classList.add('is-error');
+            })
+            .finally(() => {
+                instructionRefreshInProgress = false;
+            });
+    }
+
+    function refreshHomeInformation() {
+        updateWeatherWarnings();
+        updateResidentInstructions();
     }
 
     function renderDisasterInformation() {
@@ -671,10 +751,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     disasterTypeFilter.addEventListener('change', renderDisasterInformation);
-    refreshInformationButton.addEventListener('click', updateWeatherWarnings);
+    refreshInformationButton.addEventListener('click', refreshHomeInformation);
     renderDisasterInformation();
-    updateWeatherWarnings();
+    refreshHomeInformation();
     setInterval(updateWeatherWarnings, 600000);
+    setInterval(updateResidentInstructions, 60000);
 });
 </script>
 {% endblock %}

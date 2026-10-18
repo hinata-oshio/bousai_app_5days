@@ -114,11 +114,8 @@ instructions = load_json(INSTRUCTIONS_FILE, [])
 
 def save_instructions():
     """指示ボードのデータをファイルに保存する"""
-    try:
-        with open(INSTRUCTIONS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(instructions, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
+    with open(INSTRUCTIONS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(instructions, f, ensure_ascii=False, indent=2)
 
 def save_shelters():
     """避難所データをファイルに保存する"""
@@ -172,6 +169,30 @@ def format_report_time(iso_str):
 def filter_shelters(district=None):
     """district 指定があれば一致する避難所のみ、なければ全件を返す"""
     return [s for s in shelters if not district or s.get('district') == district]
+
+def is_public_instruction(instruction):
+    """住民・観光客向けの指示かを判定する（旧データの「住民」も含む）"""
+    return instruction.get('target') in ('住民', '住民・観光客')
+
+def get_public_emergency_notices():
+    """ホーム画面に表示する、未解除の住民・観光客向け指示を返す"""
+    notices = [
+        {
+            'content': instruction.get('content', '').strip(),
+            'priority': instruction.get('priority') if instruction.get('priority') == 'high' else 'normal',
+            'received_at': instruction.get('created_at', '日時不明'),
+            'shelter': instruction.get('shelter', '').strip(),
+        }
+        for instruction in instructions
+        if is_public_instruction(instruction)
+        and instruction.get('content', '').strip()
+        and instruction.get('status') not in ('解除', '完了')
+    ]
+    notices.sort(
+        key=lambda notice: parse_japan_time(notice['received_at']),
+        reverse=True,
+    )
+    return notices
 
 
 def parse_area_warnings(warning_data):
@@ -264,15 +285,8 @@ def get_weather_warnings():
 # トップページ：templates/index.html を返す（住民向け指示も表示する）
 @app.route('/')
 def index():
-    resident_notices = [i for i in instructions if i.get('target') == '住民']
-    emergency_notices = [
-        {
-            'content': notice.get('content', '').strip(),
-        }
-        for notice in resident_notices
-        if notice.get('content', '').strip()
-        and notice.get('status') not in ('解除', '完了')
-    ]
+    resident_notices = [i for i in instructions if is_public_instruction(i)]
+    emergency_notices = get_public_emergency_notices()
     disaster_information = []
     for instruction in instructions:
         content = instruction.get('content', '').strip()
@@ -288,7 +302,7 @@ def index():
             details.append(f'避難先: {instruction["shelter"]}')
 
         disaster_information.append({
-            'type': '住民向け発信' if target == '住民' else '庁内指示',
+            'type': '住民向け発信' if is_public_instruction(instruction) else '庁内指示',
             'content': content,
             'details': ' / '.join(details),
             'received_at': received_at,
@@ -441,11 +455,57 @@ def all_shelters():
 
 
 # 指示ボード：住民向けの指示を一覧で確認する
-@app.route('/board')
+@app.route('/board', methods=['GET', 'POST'])
 @login_required
 def board():
-    resident_instructions = [i for i in instructions if i.get('target') == '住民']
-    return render_template('board.html', instructions=resident_instructions)
+    error_message = None
+    success_message = None
+    if request.method == 'POST':
+        target = request.form.get('target', '').strip()
+        content = request.form.get('content', '').strip()
+        shelter = request.form.get('shelter', '').strip()
+        priority = request.form.get('priority', 'normal')
+        if target not in ('住民・観光客', '防災課', '道路管理課') or not content:
+            error_message = '宛先を選択し、指示内容を入力してください。'
+        elif priority not in ('high', 'normal'):
+            error_message = '緊急度を選択してください。'
+        else:
+            instruction = {
+                'id': max((item.get('id', 0) for item in instructions), default=0) + 1,
+                'target': target,
+                'content': content,
+                'shelter': shelter,
+                'priority': priority,
+                'status': '発信中',
+                'created_at': get_japan_time(),
+                'updated_at': get_japan_time(),
+            }
+            instructions.append(instruction)
+            try:
+                save_instructions()
+            except (OSError, TypeError):
+                instructions.pop()
+                app.logger.exception('指示の保存に失敗しました')
+                error_message = '指示を保存できませんでした。時間をおいて再度お試しください。'
+            else:
+                success_message = '指示を発信しました。'
+
+    board_instructions = sorted(
+        instructions,
+        key=lambda item: parse_japan_time(item.get('created_at', '')),
+        reverse=True,
+    )
+    return render_template(
+        'board.html',
+        instructions=board_instructions,
+        error_message=error_message,
+        success_message=success_message,
+    )
+
+# JSON API：ホーム画面向けの住民・観光客向け指示
+@app.route('/api/resident_instructions')
+def api_resident_instructions():
+    return jsonify(get_public_emergency_notices())
 
 # 検索結果ページ：templates/search_results.html を返す
 @app.route('/search_results')
